@@ -140,7 +140,7 @@ class ReceiptService {
       ],
       discount: 0,
       total: 100,
-      footer: 'Printer test OK — you are ready to sell.',
+      footer: 'Printer test OK - you are ready to sell.',
     );
     final List<int> bytes;
     try {
@@ -153,6 +153,35 @@ class ReceiptService {
 
   // ------------------------- Build the 80mm receipt -------------------------
 
+  /// Thermal printers use a single-byte code page (CP437), so any non-ASCII
+  /// character (em-dash, smart quotes, ellipsis, curly apostrophe, ₨, etc.)
+  /// prints as garbage or breaks the line. Map the common ones to safe ASCII
+  /// and replace anything else outside printable ASCII with '?'. Tabs/newlines
+  /// are kept.
+  static String ascii(String s) {
+    const map = {
+      '—': '-', '–': '-', '−': '-', '‑': '-', '―': '-',
+      '“': '"', '”': '"', '„': '"', '«': '"', '»': '"',
+      '‘': "'", '’': "'", '‚': "'", '`': "'",
+      '…': '...', '•': '*', '·': '-', '×': 'x', '÷': '/',
+      '₨': 'Rs', '﷼': 'Rs', '®': '(R)', '©': '(C)', '™': '(TM)',
+      '°': ' deg', ' ': ' ',
+    };
+    final sb = StringBuffer();
+    for (final r in s.runes) {
+      final ch = String.fromCharCode(r);
+      final rep = map[ch];
+      if (rep != null) {
+        sb.write(rep);
+      } else if (r == 9 || r == 10 || (r >= 32 && r < 127)) {
+        sb.write(ch);
+      } else {
+        sb.write('?');
+      }
+    }
+    return sb.toString();
+  }
+
   Future<List<int>> _buildBytes(ReceiptData data) async {
     final profile = await CapabilityProfile.load();
     final g = Generator(PaperSize.mm80, profile);
@@ -160,7 +189,7 @@ class ReceiptService {
 
     // Header: shop name (bold, centered, big).
     out.addAll(g.text(
-      data.shopName,
+      ascii(data.shopName),
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
@@ -168,7 +197,7 @@ class ReceiptService {
         width: PosTextSize.size2,
       ),
     ));
-    out.addAll(g.text(data.subtitle,
+    out.addAll(g.text(ascii(data.subtitle),
         styles: const PosStyles(align: PosAlign.center)));
     if (data.isReturn) {
       out.addAll(g.text('** RETURN / REFUND **',
@@ -177,9 +206,9 @@ class ReceiptService {
     out.addAll(g.hr());
 
     // Date/time + invoice number.
-    out.addAll(g.text('Invoice: ${data.invoiceNo}'));
-    out.addAll(g.text('Date: ${data.dateText}'));
-    out.addAll(g.text('Payment: ${data.paymentText}'));
+    out.addAll(g.text('Invoice: ${ascii(data.invoiceNo)}'));
+    out.addAll(g.text('Date: ${ascii(data.dateText)}'));
+    out.addAll(g.text('Payment: ${ascii(data.paymentText)}'));
     out.addAll(g.hr());
 
     // Column header.
@@ -197,7 +226,7 @@ class ReceiptService {
 
     for (final it in data.items) {
       out.addAll(g.row([
-        PosColumn(text: it.name, width: 6),
+        PosColumn(text: ascii(it.name), width: 6),
         PosColumn(
             text: '${it.qty}',
             width: 2,
@@ -233,7 +262,7 @@ class ReceiptService {
     ]));
 
     out.addAll(g.hr());
-    out.addAll(g.text(data.footer,
+    out.addAll(g.text(ascii(data.footer),
         styles: const PosStyles(align: PosAlign.center, bold: true)));
     out.addAll(g.feed(2));
     out.addAll(g.cut());
