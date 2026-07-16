@@ -7,6 +7,7 @@ import 'package:win32/win32.dart';
 
 import '../../models/sale.dart';
 import '../../models/sale_item.dart';
+import 'printer_prefs.dart';
 import 'receipt_data.dart';
 import 'receipt_preview.dart';
 
@@ -25,19 +26,54 @@ class ReceiptService {
   /// Optional printer name. When null, the Windows default printer is used.
   String? printerName;
 
-  /// True on the platform that has the real thermal printer (Windows). Elsewhere
-  /// we show an on-screen preview instead.
+  /// Network printer address. When [networkIp] is set, the receipt is sent as
+  /// raw ESC/POS bytes over TCP to [networkIp]:[networkPort] on any platform.
+  /// Loaded at startup from [PrinterPrefs] and updated from the Settings screen.
+  String? networkIp;
+  int networkPort = PrinterPrefs.defaultPort;
+
+  bool get hasNetworkPrinter =>
+      networkIp != null && networkIp!.trim().isNotEmpty;
+
+  /// True on the platform that has a directly-attached thermal printer (the
+  /// Windows shop PC via USB). Network printing is handled separately.
   bool get isThermalPlatform => Platform.isWindows;
 
-  /// Print (Windows) or preview (elsewhere) a receipt. Returns null on success,
-  /// or a short plain-words message on failure — never throws, so a printer
-  /// problem can never lose an already-saved sale.
+  /// Load saved network-printer settings into memory (call once at startup).
+  Future<void> loadSettings() async {
+    networkIp = await PrinterPrefs.getIp();
+    networkPort = await PrinterPrefs.getPort();
+  }
+
+  /// Print a receipt, or show the on-screen preview. Order:
+  ///  1. If a network printer is configured, send ESC/POS over TCP.
+  ///  2. Else on Windows, send raw to the USB spooler.
+  ///  3. Else (or if the network printer is unreachable), show the preview.
+  ///
+  /// Returns null on success, or a short plain-words message on failure — never
+  /// throws, so a printer problem can never lose an already-saved sale.
   Future<String?> deliver({
     required Sale sale,
     required List<SaleItem> items,
     required Map<int, String> names,
   }) async {
     final data = ReceiptData.from(sale: sale, items: items, names: names);
+
+    if (hasNetworkPrinter) {
+      final List<int> bytes;
+      try {
+        bytes = await _buildBytes(data);
+      } catch (e) {
+        await ReceiptPreview.show(data);
+        return 'Could not build the receipt: $e';
+      }
+      final err = await _sendOverTcp(bytes, networkIp!.trim(), networkPort);
+      if (err == null) return null; // printed on the network printer
+      // Unreachable: fall back to the preview so nothing is lost, and tell them.
+      await ReceiptPreview.show(data);
+      return err;
+    }
+
     if (isThermalPlatform) {
       try {
         final bytes = await _buildBytes(data);
@@ -46,9 +82,73 @@ class ReceiptService {
         return 'Could not print receipt: $e';
       }
     }
-    // Testing on Mac/other desktop: show the same layout on screen.
+    // No printer configured: show the same layout on screen.
     await ReceiptPreview.show(data);
     return null;
+  }
+
+  // ------------------------- Network (TCP / ESC-POS) -------------------------
+
+  /// Open a TCP connection to the printer and write the raw ESC/POS bytes.
+  /// Returns null on success or a plain-words message. Never throws.
+  Future<String?> _sendOverTcp(List<int> bytes, String ip, int port) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(ip, port,
+          timeout: const Duration(seconds: 5));
+      socket.add(bytes);
+      await socket.flush();
+      // Give the printer a moment to drain before we close the socket.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await socket.close();
+      return null;
+    } catch (e) {
+      return 'Printer at $ip:$port is not reachable — showing a preview '
+          'instead. Check the printer power and network.';
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  /// Quick reachability check for the Settings status indicator. True if the
+  /// printer accepts a TCP connection on [ip]:[port].
+  Future<bool> pingPrinter(String ip, int port) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(ip.trim(), port,
+          timeout: const Duration(seconds: 3));
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  /// Send a small test receipt to [ip]:[port]. Returns null on success or a
+  /// plain-words message. Used by the "Test print" button.
+  Future<String?> testPrint(String ip, int port) async {
+    final data = ReceiptData(
+      shopName: 'Roomi Arts',
+      subtitle: 'Stationery Shop',
+      invoiceNo: 'TEST',
+      dateText: ReceiptData.fmtDate(DateTime.now()),
+      paymentText: 'Cash',
+      isReturn: false,
+      items: const [
+        ReceiptItemLine('Test item', 1, 100),
+      ],
+      discount: 0,
+      total: 100,
+      footer: 'Printer test OK — you are ready to sell.',
+    );
+    final List<int> bytes;
+    try {
+      bytes = await _buildBytes(data);
+    } catch (e) {
+      return 'Could not build the test receipt: $e';
+    }
+    return _sendOverTcp(bytes, ip.trim(), port);
   }
 
   // ------------------------- Build the 80mm receipt -------------------------

@@ -10,6 +10,7 @@ import '../reports/reports_view.dart';
 import '../return_screen/return_view.dart';
 import '../sale/sale_view.dart';
 import '../sales_list/sales_list_view.dart';
+import '../settings/settings_view.dart';
 import '../staff/staff_view.dart';
 import '../stock/stock_view.dart';
 import 'shell_controller.dart';
@@ -31,6 +32,7 @@ const List<_NavItem> _navItems = [
   _NavItem(Icons.bar_chart, 'Reports', ownerOnly: true),
   _NavItem(Icons.backup, 'Backup', ownerOnly: true),
   _NavItem(Icons.group, 'Staff', ownerOnly: true),
+  _NavItem(Icons.settings, 'Settings', ownerOnly: true),
 ];
 
 /// The app shell: fixed left sidebar + swapping body. Same layout on every
@@ -85,6 +87,8 @@ class ShellView extends StatelessWidget {
         return const BackupView();
       case 6:
         return const StaffView();
+      case 7:
+        return const SettingsView();
       default:
         return const SaleView();
     }
@@ -204,26 +208,30 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          // Only the items this role may use. Owner sees everything.
-          Obx(() {
-            final isOwner = AuthService.to.isOwner;
-            // touch current.value so a user switch rebuilds the menu
-            AuthService.to.current.value;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (int i = 0; i < _navItems.length; i++)
-                  if (!_navItems[i].ownerOnly || isOwner)
-                    Obx(() => _SidebarButton(
-                          icon: _navItems[i].icon,
-                          label: _navItems[i].label,
-                          selected: c.current.value == i,
-                          onTap: () => c.go(i),
-                        )),
-              ],
-            );
-          }),
-          const Spacer(),
+          // Only the items this role may use. Owner sees everything. Scrolls
+          // if the list is taller than the window (keeps Help pinned below).
+          Expanded(
+            child: Obx(() {
+              final isOwner = AuthService.to.isOwner;
+              // touch current.value so a user switch rebuilds the menu
+              AuthService.to.current.value;
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (int i = 0; i < _navItems.length; i++)
+                      if (!_navItems[i].ownerOnly || isOwner)
+                        Obx(() => _SidebarButton(
+                              icon: _navItems[i].icon,
+                              label: _navItems[i].label,
+                              selected: c.current.value == i,
+                              onTap: () => c.go(i),
+                            )),
+                  ],
+                ),
+              );
+            }),
+          ),
           // Small "Help" button in the corner. Always labelled.
           Padding(
             padding: const EdgeInsets.all(12),
@@ -279,12 +287,16 @@ class _SidebarButton extends StatelessWidget {
                     size: 26,
                     color: selected ? AppColors.teal : Colors.white),
                 const SizedBox(width: 14),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: Sizes.bodyText,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? AppColors.teal : Colors.white,
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: Sizes.bodyText,
+                      fontWeight: FontWeight.w700,
+                      color: selected ? AppColors.teal : Colors.white,
+                    ),
                   ),
                 ),
               ],
