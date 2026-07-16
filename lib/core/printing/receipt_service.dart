@@ -26,40 +26,50 @@ class ReceiptService {
   /// Optional printer name. When null, the Windows default printer is used.
   String? printerName;
 
-  /// Network printer address. When [networkIp] is set, the receipt is sent as
-  /// raw ESC/POS bytes over TCP to [networkIp]:[networkPort] on any platform.
-  /// Loaded at startup from [PrinterPrefs] and updated from the Settings screen.
+  /// Chosen printing mode. Defaults to the USB/system printer, which previews
+  /// automatically on a machine without one (so Mac testing "just works").
+  PrinterMode printerMode = PrinterMode.system;
+
+  /// Network printer address (only used when [printerMode] is network).
   String? networkIp;
   int networkPort = PrinterPrefs.defaultPort;
 
   bool get hasNetworkPrinter =>
       networkIp != null && networkIp!.trim().isNotEmpty;
 
-  /// True on the platform that has a directly-attached thermal printer (the
-  /// Windows shop PC via USB). Network printing is handled separately.
+  /// True on the platform that has a directly-attached USB/system thermal
+  /// printer (the Windows shop PC). Elsewhere, system mode previews instead.
   bool get isThermalPlatform => Platform.isWindows;
 
-  /// Load saved network-printer settings into memory (call once at startup).
+  /// Load saved printer settings into memory (call once at startup).
   Future<void> loadSettings() async {
+    printerMode = await PrinterPrefs.getMode();
     networkIp = await PrinterPrefs.getIp();
     networkPort = await PrinterPrefs.getPort();
   }
 
-  /// Print a receipt, or show the on-screen preview. Order:
-  ///  1. If a network printer is configured, send ESC/POS over TCP.
-  ///  2. Else on Windows, send raw to the USB spooler.
-  ///  3. Else (or if the network printer is unreachable), show the preview.
+  /// Print a receipt, or show the on-screen preview — depending on [printerMode]
+  /// and the platform. Never throws and never blocks a sale:
+  ///  - system mode on Windows -> USB/system spooler.
+  ///  - system mode elsewhere (Mac testing) -> on-screen preview, no error.
+  ///  - network mode with an IP -> ESC/POS over TCP; if unreachable, preview +
+  ///    a short message.
+  ///  - anything else -> preview.
   ///
-  /// Returns null on success, or a short plain-words message on failure — never
-  /// throws, so a printer problem can never lose an already-saved sale.
+  /// Returns null on success, or a short plain-words message on failure.
   Future<String?> deliver({
     required Sale sale,
     required List<SaleItem> items,
     required Map<int, String> names,
   }) async {
     final data = ReceiptData.from(sale: sale, items: items, names: names);
+    return _route(data);
+  }
 
-    if (hasNetworkPrinter) {
+  /// Route a built receipt to the printer or the preview per [printerMode].
+  Future<String?> _route(ReceiptData data) async {
+    // Network mode: send over TCP, fall back to preview if it can't be reached.
+    if (printerMode == PrinterMode.network && hasNetworkPrinter) {
       final List<int> bytes;
       try {
         bytes = await _buildBytes(data);
@@ -68,13 +78,13 @@ class ReceiptService {
         return 'Could not build the receipt: $e';
       }
       final err = await _sendOverTcp(bytes, networkIp!.trim(), networkPort);
-      if (err == null) return null; // printed on the network printer
-      // Unreachable: fall back to the preview so nothing is lost, and tell them.
-      await ReceiptPreview.show(data);
+      if (err == null) return null; // printed
+      await ReceiptPreview.show(data); // keep the sale, show it on screen
       return err;
     }
 
-    if (isThermalPlatform) {
+    // System/USB mode: real spooler on Windows, silent preview elsewhere.
+    if (printerMode == PrinterMode.system && isThermalPlatform) {
       try {
         final bytes = await _buildBytes(data);
         return _sendRaw(bytes);
@@ -82,7 +92,8 @@ class ReceiptService {
         return 'Could not print receipt: $e';
       }
     }
-    // No printer configured: show the same layout on screen.
+
+    // Default / testing on Mac: show the same layout on screen, no error.
     await ReceiptPreview.show(data);
     return null;
   }
@@ -125,9 +136,10 @@ class ReceiptService {
     }
   }
 
-  /// Send a small test receipt to [ip]:[port]. Returns null on success or a
-  /// plain-words message. Used by the "Test print" button.
-  Future<String?> testPrint(String ip, int port) async {
+  /// Print (or preview) a small test receipt using the CURRENT [printerMode] and
+  /// settings. Save the settings first so they are applied. Returns null on
+  /// success or a plain-words message. Used by the "Test print" button.
+  Future<String?> testPrint() {
     final data = ReceiptData(
       shopName: 'Roomi Arts',
       subtitle: 'Stationery Shop',
@@ -142,13 +154,7 @@ class ReceiptService {
       total: 100,
       footer: 'Printer test OK - you are ready to sell.',
     );
-    final List<int> bytes;
-    try {
-      bytes = await _buildBytes(data);
-    } catch (e) {
-      return 'Could not build the test receipt: $e';
-    }
-    return _sendOverTcp(bytes, ip.trim(), port);
+    return _route(data);
   }
 
   // ------------------------- Build the 80mm receipt -------------------------
