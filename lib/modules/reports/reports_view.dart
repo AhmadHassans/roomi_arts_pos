@@ -91,7 +91,7 @@ class _TopBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${_greeting()}, Ahmad 👋',
+              Text('${_greeting()}, ${AppText.shopName} 👋',
                   style: const TextStyle(
                       fontSize: 27,
                       fontWeight: FontWeight.w800,
