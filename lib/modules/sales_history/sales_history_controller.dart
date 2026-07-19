@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../data/sales_history_repository.dart';
 
@@ -127,10 +124,10 @@ class SalesHistoryController extends GetxController {
 
   // ------------------------- CSV export -------------------------
 
-  /// Build a CSV of the current range (summary block + one row per item line)
-  /// and save it to the Downloads folder. Returns the saved file path on
-  /// success, or throws with a plain message.
-  Future<String> exportCsv() async {
+  /// Build the CSV text for the current range: a summary block, one row per
+  /// invoice item line, then a product-wise summary. Pure — the caller picks
+  /// where to save it (native Save-As) so there are no sandbox writes.
+  String buildCsv() {
     final s = summary.value;
     final buf = StringBuffer();
 
@@ -147,20 +144,31 @@ class SalesHistoryController extends GetxController {
     }
     buf.writeln();
 
-    // Day-wise invoice/item rows.
-    buf.writeln('Date,Time,Invoice,Type,Payment,Item,Qty,Amount');
+    // One row per item. Invoice-level fields (Discount, Total, Payment,
+    // Cashier) repeat on each of the invoice's rows so every row is
+    // self-contained for filtering in Excel. Returns are shown negative.
+    // Cashier is blank: it is not stored per sale (printed live only).
+    buf.writeln(
+        'Invoice,Date,Time,Item,Quantity,Rate,Amount,Discount,Total,Payment,Cashier');
     for (final day in days) {
       for (final inv in day.invoices) {
+        final sign = inv.isReturn ? -1 : 1;
+        final invTotal = (inv.amount * sign).toStringAsFixed(0);
+        final invDisc = (inv.discount * sign).toStringAsFixed(0);
+        final pay = _payLabel(inv.paymentType);
+        final cashier = _csv(inv.cashier ?? '');
         if (inv.items.isEmpty) {
-          buf.writeln('${day.day},${fmtTime(inv.dateTime)},'
-              '${_csv(inv.invoiceNo)},${inv.type},${inv.paymentType},,,'
-              '${inv.signedAmount.toStringAsFixed(0)}');
+          buf.writeln('${_csv(inv.invoiceNo)},${day.day},'
+              '${fmtTime(inv.dateTime)},,,,,'
+              '$invDisc,$invTotal,$pay,$cashier');
         }
         for (final it in inv.items) {
-          final amt = inv.isReturn ? -it.amount : it.amount;
-          buf.writeln('${day.day},${fmtTime(inv.dateTime)},'
-              '${_csv(inv.invoiceNo)},${inv.type},${inv.paymentType},'
-              '${_csv(it.name)},${it.qty},${amt.toStringAsFixed(0)}');
+          final rate = it.qty == 0 ? 0.0 : it.amount / it.qty;
+          final amt = it.amount * sign;
+          buf.writeln('${_csv(inv.invoiceNo)},${day.day},'
+              '${fmtTime(inv.dateTime)},${_csv(it.name)},'
+              '${it.qty * sign},${rate.toStringAsFixed(2)},'
+              '${amt.toStringAsFixed(0)},$invDisc,$invTotal,$pay,$cashier');
         }
       }
     }
@@ -172,31 +180,25 @@ class SalesHistoryController extends GetxController {
       buf.writeln('${_csv(p.name)},${p.qty},${p.amount.toStringAsFixed(0)}');
     }
 
-    final dir = await _saveDir();
-    final stamp = _fileStamp();
-    final file = File('${dir.path}/roomi_sales_$stamp.csv');
-    await file.writeAsString(buf.toString());
-    return file.path;
+    return buf.toString();
   }
 
-  /// Downloads folder where available (desktop), else app documents.
-  Future<Directory> _saveDir() async {
-    try {
-      final d = await getDownloadsDirectory();
-      if (d != null) return d;
-    } catch (_) {
-      // getDownloadsDirectory is unsupported on some platforms — fall through.
-    }
-    return getApplicationDocumentsDirectory();
-  }
+  /// True when the current range has any sales or returns to export.
+  bool get hasSales => days.isNotEmpty;
 
-  /// A filename-safe stamp for the current range, e.g. 2026-07-14 or
-  /// 2026-07-10_to_2026-07-14.
-  String _fileStamp() {
+  static String _payLabel(String type) => type.isEmpty
+      ? ''
+      : '${type[0].toUpperCase()}${type.substring(1).toLowerCase()}';
+
+  /// Suggested CSV file name for the current range, e.g.
+  /// roomi_sales_2026-07-14.csv or roomi_sales_2026-07-10_to_2026-07-14.csv.
+  String suggestedCsvName() {
     String k(DateTime d) =>
         '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-    if (isSingleDay) return k(from.value);
-    return '${k(from.value)}_to_${k(to.value.subtract(const Duration(days: 1)))}';
+    final stamp = isSingleDay
+        ? k(from.value)
+        : '${k(from.value)}_to_${k(to.value.subtract(const Duration(days: 1)))}';
+    return 'roomi_sales_$stamp.csv';
   }
 
   /// Escape a CSV field: quote when it contains a comma, quote, or newline.

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -94,9 +97,32 @@ class _Header extends StatelessWidget {
   }
 
   Future<void> _export(BuildContext context) async {
+    // Nothing in the selected range — don't write an empty/broken file.
+    if (!c.hasSales) {
+      Get.snackbar('No sales in this range',
+          'There are no sales for ${c.rangeLabel}. Nothing to export.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppColors.violetTint,
+          colorText: AppColors.text);
+      return;
+    }
     try {
-      final path = await c.exportCsv();
-      Get.snackbar('Exported', 'Saved to:\n$path',
+      final csv = c.buildCsv();
+      // Native "Save As" — the owner picks the location (no sandbox error).
+      // Do NOT pass bytes: desktop file_picker rejects them ("Bytes are not
+      // supported on macOS"). It returns the chosen path; we write it ourselves.
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save sales report',
+        fileName: c.suggestedCsvName(),
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+      if (path == null) return; // owner cancelled
+
+      final out = path.toLowerCase().endsWith('.csv') ? path : '$path.csv';
+      await File(out).writeAsString(csv);
+
+      Get.snackbar('Exported', 'Saved to:\n$out',
           snackPosition: SnackPosition.BOTTOM,
           duration: const Duration(seconds: 5),
           backgroundColor: AppColors.violetTint,

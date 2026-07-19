@@ -44,6 +44,8 @@ class HistoryInvoice {
   final String type; // 'sale' | 'return'
   final String paymentType; // 'cash' | 'card' | ...
   final double amount; // total_amount as stored (always positive)
+  final double discount; // discount_amount for this invoice
+  final String? cashier; // username who rang it (null on older rows)
   final List<HistoryItemLine> items;
   const HistoryInvoice({
     required this.invoiceNo,
@@ -51,6 +53,8 @@ class HistoryInvoice {
     required this.type,
     required this.paymentType,
     required this.amount,
+    required this.discount,
+    required this.cashier,
     required this.items,
   });
 
@@ -158,7 +162,8 @@ class SalesHistoryRepository {
     final rows = await _db.rawQuery('''
       SELECT s.id AS sid, s.invoice_no AS invoice_no, s.date AS date,
              s.type AS type, s.payment_type AS payment_type,
-             s.total_amount AS total_amount,
+             s.total_amount AS total_amount, s.discount_amount AS discount_amount,
+             s.cashier AS cashier,
              p.name AS pname, si.qty AS qty, si.price_at_sale AS price
       FROM sales s
       LEFT JOIN sale_items si ON si.sale_id = s.id
@@ -183,6 +188,8 @@ class SalesHistoryRepository {
           type: r['type'] as String,
           paymentType: r['payment_type'] as String,
           amount: (r['total_amount'] as num).toDouble(),
+          discount: (r['discount_amount'] as num?)?.toDouble() ?? 0,
+          cashier: r['cashier'] as String?,
           items: itemsById[sid]!, // filled below (same list reference)
         );
       }
