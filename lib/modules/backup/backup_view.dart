@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/backup/backup_prefs.dart';
 import '../../core/constants.dart';
 import '../../core/db/database.dart';
 import '../../core/theme.dart';
@@ -13,8 +14,27 @@ import '../stock/stock_controller.dart';
 
 /// BACKUP & RESTORE: two big buttons, plain wording. Copies the single SQLite
 /// file out to a folder the owner picks, and loads one back.
-class BackupView extends StatelessWidget {
+class BackupView extends StatefulWidget {
   const BackupView({super.key});
+
+  @override
+  State<BackupView> createState() => _BackupViewState();
+}
+
+class _BackupViewState extends State<BackupView> {
+  DateTime? _lastBackup;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastBackup();
+  }
+
+  Future<void> _loadLastBackup() async {
+    final d = await BackupPrefs.getLastBackup();
+    if (!mounted) return;
+    setState(() => _lastBackup = d);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +52,8 @@ class BackupView extends StatelessWidget {
             'Keep a copy of your shop data safe on a USB drive or a folder.',
             style: TextStyle(fontSize: Sizes.bodyText, color: AppColors.textSoft),
           ),
+          const SizedBox(height: 12),
+          _LastBackupChip(lastBackup: _lastBackup),
           const SizedBox(height: 24),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,6 +101,10 @@ class BackupView extends StatelessWidget {
 
     try {
       final path = await AppDatabase.instance.backupTo(dir, fileName: fileName);
+      // Remember this so the monthly reminder resets and the Backup screen
+      // shows the fresh date.
+      await BackupPrefs.setLastBackup();
+      await _loadLastBackup();
       await _message(
         icon: Icons.check_circle,
         title: 'Backup saved',
@@ -175,6 +201,43 @@ class BackupView extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill showing when the shop data was last backed up.
+class _LastBackupChip extends StatelessWidget {
+  final DateTime? lastBackup;
+  const _LastBackupChip({required this.lastBackup});
+
+  @override
+  Widget build(BuildContext context) {
+    final never = lastBackup == null;
+    final label = never
+        ? 'No backup yet'
+        : 'Last backup: ${BackupPrefs.fmtDate(lastBackup!)}';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: never ? AppColors.warnBg : AppColors.violetTint,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(never ? Icons.info_outline : Icons.history,
+                size: 18, color: never ? AppColors.warn : AppColors.violetDark),
+            const SizedBox(width: 8),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: never ? AppColors.warn : AppColors.violetDark)),
+          ],
         ),
       ),
     );

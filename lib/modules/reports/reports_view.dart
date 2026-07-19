@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../core/backup/backup_prefs.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../core/tokens.dart';
 import '../../data/reports_repository.dart';
 import '../shell/shell_controller.dart';
 import 'reports_controller.dart';
@@ -31,6 +33,7 @@ class ReportsView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const _BackupReminder(),
               const _TopBar(),
               const SizedBox(height: 22),
               _StatRow(c: c),
@@ -59,6 +62,118 @@ class ReportsView extends StatelessWidget {
           ),
         );
       }),
+    );
+  }
+}
+
+/// Friendly monthly backup nudge shown at the top of the owner dashboard when
+/// it has been ~30 days (or no backup ever). "Backup now" jumps to the Backup
+/// screen; "Remind me later" snoozes it a few days. Reminder state only — the
+/// backup logic itself is untouched.
+class _BackupReminder extends StatefulWidget {
+  const _BackupReminder();
+
+  @override
+  State<_BackupReminder> createState() => _BackupReminderState();
+}
+
+class _BackupReminderState extends State<_BackupReminder> {
+  bool _show = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final show = await BackupPrefs.shouldRemind();
+    if (!mounted) return;
+    setState(() => _show = show);
+  }
+
+  Future<void> _later() async {
+    await BackupPrefs.snooze();
+    if (!mounted) return;
+    setState(() => _show = false);
+  }
+
+  void _backupNow() {
+    setState(() => _show = false);
+    // Backup is index 6 in the sidebar (Sale, Stock, Return, Records, Reports,
+    // History, Backup, ...).
+    Get.find<ShellController>().go(6);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_show) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: AppGradients.violet,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          boxShadow: AppShadows.glow(AppColors.violet),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.backup, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Time to back up your data',
+                      style: TextStyle(
+                          fontFamily: AppTheme.display,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white)),
+                  SizedBox(height: 3),
+                  Text(
+                    "It's been a month since your last backup. "
+                    'Back up now to keep it safe.',
+                    style: TextStyle(fontSize: 13.5, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            TextButton(
+              onPressed: _later,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
+                minimumSize: const Size(0, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: const Text('Remind me later'),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: _backupNow,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.violetDark,
+                minimumSize: const Size(0, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              icon: const Icon(Icons.backup, size: 18),
+              label: const Text('Backup now'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
