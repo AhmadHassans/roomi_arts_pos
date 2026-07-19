@@ -13,6 +13,7 @@ class PrinterPrefs {
   static const _kMode = 'printer_mode';
   static const _kIp = 'printer_ip';
   static const _kPort = 'printer_port';
+  static const _kName = 'printer_name';
 
   /// Default raw ESC/POS port for most network thermal printers.
   static const int defaultPort = 9100;
@@ -38,14 +39,23 @@ class PrinterPrefs {
     return prefs.getInt(_kPort) ?? defaultPort;
   }
 
+  /// Chosen USB/system printer name. Empty string means "use the Windows
+  /// default printer".
+  static Future<String> getName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kName) ?? '';
+  }
+
   static Future<void> save({
     required PrinterMode mode,
     required String ip,
     required int port,
+    String name = '',
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kMode, modeName(mode));
     await prefs.setString(_kIp, ip.trim());
     await prefs.setInt(_kPort, port);
+    await prefs.setString(_kName, name.trim());
   }
 }

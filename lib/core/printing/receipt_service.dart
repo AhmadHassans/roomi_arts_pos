@@ -46,6 +46,50 @@ class ReceiptService {
     printerMode = await PrinterPrefs.getMode();
     networkIp = await PrinterPrefs.getIp();
     networkPort = await PrinterPrefs.getPort();
+    final name = await PrinterPrefs.getName();
+    printerName = name.isEmpty ? null : name;
+  }
+
+  /// Names of the printers installed on this Windows machine (local + network
+  /// connections). Empty on non-Windows or if none are installed. Used by
+  /// Settings so the owner can pick which USB/system printer to print to.
+  List<String> listPrinters() {
+    if (!Platform.isWindows) return const [];
+    const flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
+    const level = 4; // PRINTER_INFO_4: just the name + attributes (fast).
+    final needed = calloc<Uint32>();
+    final returned = calloc<Uint32>();
+    try {
+      // First call sizes the buffer (fails, fills `needed`).
+      EnumPrinters(flags, nullptr, level, nullptr, 0, needed, returned);
+      final size = needed.value;
+      if (size == 0) return const [];
+
+      final buffer = calloc<Uint8>(size);
+      try {
+        if (EnumPrinters(flags, nullptr, level, buffer, size, needed,
+                returned) ==
+            0) {
+          return const [];
+        }
+        final count = returned.value;
+        final names = <String>[];
+        final info = buffer.cast<PRINTER_INFO_4>();
+        for (var i = 0; i < count; i++) {
+          final p = (info + i).ref.pPrinterName;
+          if (p != nullptr) {
+            final name = p.toDartString();
+            if (name.isNotEmpty) names.add(name);
+          }
+        }
+        return names;
+      } finally {
+        calloc.free(buffer);
+      }
+    } finally {
+      calloc.free(needed);
+      calloc.free(returned);
+    }
   }
 
   /// Print a receipt, or show the on-screen preview — depending on [printerMode]

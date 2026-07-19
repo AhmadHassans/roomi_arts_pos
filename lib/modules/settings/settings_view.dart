@@ -28,6 +28,11 @@ class _SettingsViewState extends State<SettingsView> {
   _Status _status = _Status.unknown;
   bool _busy = false;
 
+  /// Installed Windows printers (empty on Mac) and the chosen one. Empty
+  /// selection means "use the Windows default printer".
+  List<String> _printers = const [];
+  String? _printerName;
+
   bool get _isNetwork => _mode == PrinterMode.network;
 
   @override
@@ -40,11 +45,17 @@ class _SettingsViewState extends State<SettingsView> {
     final mode = await PrinterPrefs.getMode();
     final ip = await PrinterPrefs.getIp();
     final port = await PrinterPrefs.getPort();
+    final name = await PrinterPrefs.getName();
+    final printers = ReceiptService.instance.listPrinters();
     if (!mounted) return;
     setState(() {
       _mode = mode;
       _ip.text = ip.isEmpty ? '192.168.1.100' : ip;
       _port.text = port.toString();
+      _printers = printers;
+      // Keep the saved name only if it is still installed.
+      _printerName =
+          (name.isNotEmpty && printers.contains(name)) ? name : null;
     });
   }
 
@@ -81,10 +92,12 @@ class _SettingsViewState extends State<SettingsView> {
       ip = v.ip;
       port = v.port;
     }
-    await PrinterPrefs.save(mode: _mode, ip: ip, port: port);
+    final name = _printerName ?? '';
+    await PrinterPrefs.save(mode: _mode, ip: ip, port: port, name: name);
     ReceiptService.instance.printerMode = _mode;
     ReceiptService.instance.networkIp = ip;
     ReceiptService.instance.networkPort = port;
+    ReceiptService.instance.printerName = name.isEmpty ? null : name;
     return true;
   }
 
@@ -219,6 +232,38 @@ class _SettingsViewState extends State<SettingsView> {
                       ),
                       const SizedBox(height: 20),
                     ] else ...[
+                      // Printer picker — only when this machine has printers
+                      // installed (i.e. the Windows till). On Mac the list is
+                      // empty, so we skip straight to the preview note.
+                      if (_printers.isNotEmpty) ...[
+                        const Text('Which printer',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.muted)),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          value: _printerName,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            prefixIcon:
+                                Icon(Icons.print, color: AppColors.muted),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Windows default printer'),
+                            ),
+                            for (final p in _printers)
+                              DropdownMenuItem<String?>(
+                                value: p,
+                                child: Text(p, overflow: TextOverflow.ellipsis),
+                              ),
+                          ],
+                          onChanged: (v) => setState(() => _printerName = v),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
