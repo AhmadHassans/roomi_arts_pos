@@ -7,6 +7,7 @@ import 'package:win32/win32.dart';
 
 import '../../models/sale.dart';
 import '../../models/sale_item.dart';
+import '../constants.dart';
 import 'printer_prefs.dart';
 import 'receipt_data.dart';
 import 'receipt_preview.dart';
@@ -105,8 +106,16 @@ class ReceiptService {
     required Sale sale,
     required List<SaleItem> items,
     required Map<int, String> names,
+    String? cashierName,
+    double? cashReceived,
   }) async {
-    final data = ReceiptData.from(sale: sale, items: items, names: names);
+    final data = ReceiptData.from(
+      sale: sale,
+      items: items,
+      names: names,
+      cashierName: cashierName,
+      cashReceived: cashReceived,
+    );
     return _route(data);
   }
 
@@ -185,17 +194,22 @@ class ReceiptService {
   /// success or a plain-words message. Used by the "Test print" button.
   Future<String?> testPrint() {
     final data = ReceiptData(
-      shopName: 'Roomi Arts',
-      subtitle: 'Stationery Shop',
+      shopName: AppText.shopName,
+      subtitle: AppText.shopTagline,
+      address: AppText.shopAddress,
+      phone: AppText.shopPhone,
       invoiceNo: 'TEST',
       dateText: ReceiptData.fmtDate(DateTime.now()),
+      cashier: 'Test',
       paymentText: 'Cash',
       isReturn: false,
       items: const [
-        ReceiptItemLine('Test item', 1, 100),
+        ReceiptItemLine('Test item', 1, 100, 100),
       ],
+      subtotal: 100,
       discount: 0,
       total: 100,
+      cashReceived: 200,
       footer: 'Printer test OK - you are ready to sell.',
     );
     return _route(data);
@@ -237,7 +251,9 @@ class ReceiptService {
     final g = Generator(PaperSize.mm80, profile);
     final out = <int>[];
 
-    // Header: shop name (bold, centered, big).
+    const center = PosStyles(align: PosAlign.center);
+
+    // Header: shop name (bold, centered, big) + tagline, address, phone.
     out.addAll(g.text(
       ascii(data.shopName),
       styles: const PosStyles(
@@ -247,71 +263,93 @@ class ReceiptService {
         width: PosTextSize.size2,
       ),
     ));
-    out.addAll(g.text(ascii(data.subtitle),
-        styles: const PosStyles(align: PosAlign.center)));
+    out.addAll(g.text(ascii(data.subtitle), styles: center));
+    out.addAll(g.text(ascii(data.address), styles: center));
+    out.addAll(g.text(ascii(data.phone), styles: center));
     if (data.isReturn) {
       out.addAll(g.text('** RETURN / REFUND **',
           styles: const PosStyles(align: PosAlign.center, bold: true)));
     }
     out.addAll(g.hr());
 
-    // Date/time + invoice number.
-    out.addAll(g.text('Invoice: ${ascii(data.invoiceNo)}'));
-    out.addAll(g.text('Date: ${ascii(data.dateText)}'));
-    out.addAll(g.text('Payment: ${ascii(data.paymentText)}'));
+    // Invoice / date / cashier / payment (label left, value right).
+    void kv(String label, String value) {
+      out.addAll(g.row([
+        PosColumn(text: ascii(label), width: 5),
+        PosColumn(
+            text: ascii(value),
+            width: 7,
+            styles: const PosStyles(align: PosAlign.right)),
+      ]));
+    }
+
+    kv('Invoice:', data.invoiceNo);
+    kv('Date:', data.dateText);
+    if (data.cashier != null && data.cashier!.isNotEmpty) {
+      kv('Cashier:', data.cashier!);
+    }
+    kv('Payment:', data.paymentText);
     out.addAll(g.hr());
 
-    // Column header.
+    // Column header: Item | Qty x Rate | Amt.
     out.addAll(g.row([
-      PosColumn(text: 'Item', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Item', width: 5, styles: const PosStyles(bold: true)),
       PosColumn(
-          text: 'Qty',
-          width: 2,
+          text: 'Qty x Rate',
+          width: 4,
           styles: const PosStyles(bold: true, align: PosAlign.center)),
       PosColumn(
-          text: 'Total',
-          width: 4,
+          text: 'Amt',
+          width: 3,
           styles: const PosStyles(bold: true, align: PosAlign.right)),
     ]));
 
     for (final it in data.items) {
       out.addAll(g.row([
-        PosColumn(text: ascii(it.name), width: 6),
+        PosColumn(text: ascii(it.name), width: 5),
         PosColumn(
-            text: '${it.qty}',
-            width: 2,
+            text: '${it.qty} x ${ReceiptData.money(it.unitPrice)}',
+            width: 4,
             styles: const PosStyles(align: PosAlign.center)),
         PosColumn(
             text: ReceiptData.money(it.lineTotal),
-            width: 4,
+            width: 3,
             styles: const PosStyles(align: PosAlign.right)),
       ]));
     }
 
     out.addAll(g.hr());
 
-    if (data.discount > 0) {
+    // Totals block.
+    void totalRow(String label, String value, {bool big = false}) {
+      final style = PosStyles(
+        bold: big,
+        align: PosAlign.right,
+        height: big ? PosTextSize.size2 : PosTextSize.size1,
+      );
       out.addAll(g.row([
-        PosColumn(text: 'Discount', width: 8),
         PosColumn(
-            text: '-${ReceiptData.money(data.discount)}',
-            width: 4,
-            styles: const PosStyles(align: PosAlign.right)),
+            text: ascii(label),
+            width: 6,
+            styles: PosStyles(bold: big, height: style.height)),
+        PosColumn(text: ascii(value), width: 6, styles: style),
       ]));
     }
-    out.addAll(g.row([
-      PosColumn(
-          text: 'TOTAL',
-          width: 6,
-          styles: const PosStyles(bold: true, height: PosTextSize.size2)),
-      PosColumn(
-          text: ReceiptData.money(data.total),
-          width: 6,
-          styles: const PosStyles(
-              bold: true, align: PosAlign.right, height: PosTextSize.size2)),
-    ]));
+
+    totalRow('Subtotal', ReceiptData.money(data.subtotal));
+    totalRow('Discount', '-${ReceiptData.money(data.discount)}');
+    totalRow('TOTAL', 'Rs ${ReceiptData.money(data.total)}', big: true);
+
+    // Cash received / change (cash sales only).
+    if (data.showsCash) {
+      out.addAll(g.hr());
+      totalRow('Cash received', ReceiptData.money(data.cashReceived!));
+      totalRow('CHANGE RETURN', 'Rs ${ReceiptData.money(data.changeDue ?? 0)}',
+          big: true);
+    }
 
     out.addAll(g.hr());
+    out.addAll(g.text('Items: ${data.itemsCount}', styles: center));
     out.addAll(g.text(ascii(data.footer),
         styles: const PosStyles(align: PosAlign.center, bold: true)));
     out.addAll(g.feed(2));

@@ -8,6 +8,9 @@ library;
 
 class AppText {
   static const shopName = 'Roomi Arts';
+  static const shopTagline = 'Stationery - Art - School';
+  static const shopAddress = 'Pia Road, Lahore';
+  static const shopPhone = 'Ph: 0333-4076476';
 }
 
 /// Shared sizes so muscle memory forms (same everywhere).

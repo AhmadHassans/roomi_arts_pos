@@ -2,12 +2,14 @@ import '../../models/sale.dart';
 import '../../models/sale_item.dart';
 import '../constants.dart';
 
-/// One printed line on the receipt: item name, quantity, line total.
+/// One printed line on the receipt: item name, quantity, per-unit rate, and
+/// line total (rate * qty).
 class ReceiptItemLine {
   final String name;
   final int qty;
+  final double unitPrice; // per-unit rate (after discount)
   final double lineTotal;
-  const ReceiptItemLine(this.name, this.qty, this.lineTotal);
+  const ReceiptItemLine(this.name, this.qty, this.unitPrice, this.lineTotal);
 }
 
 /// The receipt as plain data — the SINGLE source of truth for the layout. Both
@@ -15,53 +17,88 @@ class ReceiptItemLine {
 /// preview render from this exact same object, so they always match.
 class ReceiptData {
   final String shopName;
-  final String subtitle;
+  final String subtitle; // tagline under the name
+  final String address;
+  final String phone;
   final String invoiceNo;
   final String dateText;
+  final String? cashier; // null when unknown (e.g. a reprint from Records)
   final String paymentText;
   final bool isReturn;
   final List<ReceiptItemLine> items;
+  final double subtotal; // sum of line totals (before discount)
   final double discount;
   final double total;
+
+  /// Cash handed over by the customer, when captured at checkout. Null for
+  /// card sales, returns, or reprints — then the Cash received / Change lines
+  /// are not printed.
+  final double? cashReceived;
+
   final String footer;
 
   const ReceiptData({
     required this.shopName,
     required this.subtitle,
+    required this.address,
+    required this.phone,
     required this.invoiceNo,
     required this.dateText,
+    required this.cashier,
     required this.paymentText,
     required this.isReturn,
     required this.items,
+    required this.subtotal,
     required this.discount,
     required this.total,
+    required this.cashReceived,
     required this.footer,
   });
+
+  /// Total pieces across all lines ("Items: N").
+  int get itemsCount => items.fold(0, (sum, it) => sum + it.qty);
+
+  /// Change to return, when cash received is known.
+  double? get changeDue =>
+      cashReceived == null ? null : (cashReceived! - total);
+
+  /// Whether the Cash received / Change block should print.
+  bool get showsCash => cashReceived != null && !isReturn;
 
   factory ReceiptData.from({
     required Sale sale,
     required List<SaleItem> items,
     required Map<int, String> names,
+    String? cashierName,
+    double? cashReceived,
   }) {
     final dt = DateTime.tryParse(sale.date) ?? DateTime.now();
+    final lines = [
+      for (final it in items)
+        ReceiptItemLine(
+          names[it.productId] ?? 'Item',
+          it.qty,
+          it.priceAtSale,
+          it.priceAtSale * it.qty,
+        ),
+    ];
+    final subtotal = lines.fold(0.0, (sum, it) => sum + it.lineTotal);
     return ReceiptData(
       shopName: AppText.shopName,
-      subtitle: 'Stationery Shop',
+      subtitle: AppText.shopTagline,
+      address: AppText.shopAddress,
+      phone: AppText.shopPhone,
       invoiceNo: sale.invoiceNo,
       dateText: fmtDate(dt),
+      cashier: cashierName ?? sale.cashier,
       paymentText: sale.paymentType == 'cash' ? 'Cash' : 'Card',
       isReturn: sale.type == 'return',
-      items: [
-        for (final it in items)
-          ReceiptItemLine(
-            names[it.productId] ?? 'Item',
-            it.qty,
-            it.priceAtSale * it.qty,
-          ),
-      ],
+      items: lines,
+      subtotal: subtotal,
       discount: sale.discountAmount,
       total: sale.totalAmount,
-      footer: 'Thank you! Please come again.',
+      cashReceived: sale.paymentType == 'cash' ? cashReceived : null,
+      footer: 'Thank you! Please come again',
     );
   }
 

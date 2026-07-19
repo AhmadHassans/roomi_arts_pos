@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import '../../core/auth/auth_service.dart';
 import '../../data/product_repository.dart';
 import '../../data/sale_repository.dart';
 import '../../models/product.dart';
@@ -158,6 +159,11 @@ class ReturnController extends GetxController {
     String? saleInvoice;
     String returnInvoice = '';
 
+    // Who is ringing this return/exchange (null in tests where auth is absent).
+    final cashier = Get.isRegistered<AuthService>()
+        ? AuthService.to.current.value?.username
+        : null;
+
     // 1) The return part.
     if (hasReturn) {
       final returnedItems = lines
@@ -177,6 +183,7 @@ class ReturnController extends GetxController {
         discountAmount: 0,
         paymentType: original.paymentType,
         type: 'return',
+        cashier: cashier,
       );
       // Throws OverReturnException (and rolls back) if it exceeds what was sold.
       final saved = await _sales.saveReturn(
@@ -205,6 +212,7 @@ class ReturnController extends GetxController {
         discountAmount: 0,
         paymentType: original.paymentType,
         type: 'sale',
+        cashier: cashier,
       );
       // Throws InsufficientStockException (and rolls back) if not enough stock.
       final saved = await _sales.completeSale(sale: newSale, items: items);

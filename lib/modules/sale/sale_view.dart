@@ -275,6 +275,7 @@ class _CartPanel extends StatelessWidget {
             const SizedBox(height: 8),
             _PaymentToggle(c: c),
             const SizedBox(height: 8),
+            _CashReceived(c: c),
             _Totals(c: c),
             const SizedBox(height: 8),
             _ActionButtons(c: c),
@@ -423,6 +424,65 @@ class _PaymentToggle extends StatelessWidget {
             )),
       ],
     );
+  }
+}
+
+/// Cash-received input (cash sales only). Shows the change to return live, so
+/// the cashier can read it out — and it prints on the receipt.
+class _CashReceived extends StatelessWidget {
+  final SaleController c;
+  const _CashReceived({required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (!c.paymentCash.value) return const SizedBox.shrink();
+      // Touch totals so the change line updates as the cart/discount change.
+      c.cart.length;
+      c.discountValue.value;
+      final change = c.changeDue;
+      final showChange = change != null && c.cashReceived.value! > 0;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            const Text('Cash received',
+                style: TextStyle(
+                    fontSize: Sizes.bodyText, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 130,
+              child: TextField(
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixText: 'Rs ',
+                  hintText: '0',
+                ),
+                onChanged: (v) {
+                  final n = double.tryParse(v.trim());
+                  c.cashReceived.value = (n == null || n == 0) ? null : n;
+                },
+              ),
+            ),
+            const SizedBox(width: 14),
+            if (showChange)
+              Text(
+                change >= 0
+                    ? 'Change: Rs ${change.toStringAsFixed(0)}'
+                    : 'Short: Rs ${(-change).toStringAsFixed(0)}',
+                style: TextStyle(
+                    fontSize: Sizes.bodyText,
+                    fontWeight: FontWeight.w800,
+                    color: change >= 0 ? AppColors.violet : AppColors.danger),
+              ),
+          ],
+        ),
+      );
+    });
   }
 }
 
@@ -579,6 +639,8 @@ class _ActionButtons extends StatelessWidget {
       sale: saved.sale,
       items: saved.items,
       names: saved.names,
+      cashierName: AuthService.to.current.value?.username,
+      cashReceived: c.cashReceived.value,
     );
 
     // Big clear "Sale complete" message, then back to a fresh empty sale.

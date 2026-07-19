@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
+import '../../core/auth/auth_service.dart';
 import '../../core/constants.dart';
 import '../../data/product_repository.dart';
 import '../../data/sale_repository.dart';
@@ -49,6 +50,17 @@ class SaleController extends GetxController {
 
   // Payment.
   final paymentCash = true.obs; // true = Cash, false = Card
+
+  /// Cash handed over by the customer (cash sales only). Null/0 = not entered;
+  /// used to print "Cash received" and "CHANGE RETURN" on the receipt.
+  final cashReceived = RxnDouble();
+
+  /// Change to give back, or null when no (sufficient) cash amount is entered.
+  double? get changeDue {
+    final r = cashReceived.value;
+    if (r == null) return null;
+    return r - total;
+  }
 
   @override
   void onInit() {
@@ -130,6 +142,7 @@ class SaleController extends GetxController {
   void clearCart() {
     cart.clear();
     discountValue.value = 0;
+    cashReceived.value = null;
   }
 
   // ---- Money ----
@@ -192,6 +205,9 @@ class SaleController extends GetxController {
     // Product names for the receipt (cart still holds them here).
     final names = {for (final l in cart) l.product.id!: l.product.name};
 
+    final cashier = Get.isRegistered<AuthService>()
+        ? AuthService.to.current.value?.username
+        : null;
     final draft = Sale(
       invoiceNo: '', // the real number is assigned inside the transaction
       date: DateTime.now().toIso8601String(),
@@ -199,6 +215,7 @@ class SaleController extends GetxController {
       discountAmount: disc,
       paymentType: paymentCash.value ? 'cash' : 'card',
       type: 'sale',
+      cashier: cashier,
     );
 
     // May throw InsufficientStockException -> nothing below runs, cart stays.
@@ -211,6 +228,7 @@ class SaleController extends GetxController {
       discountAmount: draft.discountAmount,
       paymentType: draft.paymentType,
       type: 'sale',
+      cashier: cashier,
     );
 
     // If the Stock screen is loaded, refresh it so stock shows the new numbers.

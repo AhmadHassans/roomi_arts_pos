@@ -7,6 +7,7 @@ class Sale {
   final double discountAmount;
   final String paymentType; // 'cash' | 'card'
   final String type; // 'sale' | 'return'
+  final String? cashier; // username who rang it (null on older rows)
 
   const Sale({
     this.id,
@@ -16,6 +17,7 @@ class Sale {
     required this.discountAmount,
     required this.paymentType,
     required this.type,
+    this.cashier,
   });
 
   Map<String, Object?> toMap() => {
@@ -26,6 +28,7 @@ class Sale {
         'discount_amount': discountAmount,
         'payment_type': paymentType,
         'type': type,
+        'cashier': cashier,
       };
 
   factory Sale.fromMap(Map<String, Object?> m) => Sale(
@@ -36,5 +39,6 @@ class Sale {
         discountAmount: (m['discount_amount'] as num).toDouble(),
         paymentType: m['payment_type'] as String,
         type: m['type'] as String,
+        cashier: m['cashier'] as String?,
       );
 }

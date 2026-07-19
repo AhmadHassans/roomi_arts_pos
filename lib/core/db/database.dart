@@ -13,9 +13,10 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _fileName = 'roomi_arts.db';
-  // v2 adds the `users` table (login/roles) and `sales.ref_invoice_no`
+  // v2 adds the `users` table (login/roles) and `sales.ref_invoice_no`.
+  // v3 adds `sales.cashier` (who rang each sale).
   // (links a return to the sale it refunds, so over-returns can be blocked).
-  static const _version = 2;
+  static const _version = 3;
 
   Database? _db;
 
@@ -209,7 +210,8 @@ class AppDatabase {
         discount_amount REAL    NOT NULL DEFAULT 0,
         payment_type    TEXT    NOT NULL DEFAULT 'cash',
         type            TEXT    NOT NULL DEFAULT 'sale',
-        ref_invoice_no  TEXT
+        ref_invoice_no  TEXT,
+        cashier         TEXT
       )
     ''');
     await db.execute('CREATE INDEX idx_sales_invoice ON sales(invoice_no)');
@@ -254,6 +256,10 @@ class AppDatabase {
       await db.execute('ALTER TABLE sales ADD COLUMN ref_invoice_no TEXT');
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_sales_ref ON sales(ref_invoice_no)');
+    }
+    if (oldVersion < 3) {
+      // Track which cashier rang each sale (blank on older rows).
+      await db.execute('ALTER TABLE sales ADD COLUMN cashier TEXT');
     }
   }
 }

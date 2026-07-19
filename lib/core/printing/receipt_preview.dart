@@ -56,6 +56,8 @@ class ReceiptPreview extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                             color: Colors.black)),
                     Text(data.subtitle, textAlign: TextAlign.center),
+                    Text(data.address, textAlign: TextAlign.center),
+                    Text(data.phone, textAlign: TextAlign.center),
                     if (data.isReturn)
                       const Text('** RETURN / REFUND **',
                           textAlign: TextAlign.center,
@@ -64,31 +66,54 @@ class ReceiptPreview extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               color: Colors.black)),
                     const _Dashes(),
-                    Text('Invoice: ${data.invoiceNo}'),
-                    Text('Date: ${data.dateText}'),
-                    Text('Payment: ${data.paymentText}'),
+                    _KV(label: 'Invoice:', value: data.invoiceNo),
+                    _KV(label: 'Date:', value: data.dateText),
+                    if (data.cashier != null && data.cashier!.isNotEmpty)
+                      _KV(label: 'Cashier:', value: data.cashier!),
+                    _KV(label: 'Payment:', value: data.paymentText),
                     const _Dashes(),
-                    const _Row(name: 'Item', qty: 'Qty', total: 'Total', bold: true),
+                    const _Row(
+                        name: 'Item', qty: 'Qty x Rate', total: 'Amt', bold: true),
                     for (final it in data.items)
                       _Row(
                         name: it.name,
-                        qty: '${it.qty}',
+                        qty: '${it.qty} x ${ReceiptData.money(it.unitPrice)}',
                         total: ReceiptData.money(it.lineTotal),
                       ),
                     const _Dashes(),
-                    if (data.discount > 0)
-                      _Row(
-                        name: 'Discount',
-                        qty: '',
-                        total: '-${ReceiptData.money(data.discount)}',
-                      ),
+                    _Row(
+                      name: 'Subtotal',
+                      qty: '',
+                      total: ReceiptData.money(data.subtotal),
+                    ),
+                    _Row(
+                      name: 'Discount',
+                      qty: '',
+                      total: '-${ReceiptData.money(data.discount)}',
+                    ),
                     _Row(
                       name: 'TOTAL',
                       qty: '',
-                      total: ReceiptData.money(data.total),
+                      total: 'Rs ${ReceiptData.money(data.total)}',
                       bold: true,
                     ),
+                    if (data.showsCash) ...[
+                      const _Dashes(),
+                      _Row(
+                        name: 'Cash received',
+                        qty: '',
+                        total: ReceiptData.money(data.cashReceived!),
+                      ),
+                      _Row(
+                        name: 'CHANGE RETURN',
+                        qty: '',
+                        total: 'Rs ${ReceiptData.money(data.changeDue ?? 0)}',
+                        bold: true,
+                      ),
+                    ],
                     const _Dashes(),
+                    Text('Items: ${data.itemsCount}',
+                        textAlign: TextAlign.center),
                     Text(data.footer,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -126,6 +151,30 @@ class _Dashes extends StatelessWidget {
       );
 }
 
+/// A label-left, value-right line (Invoice / Date / Cashier / Payment).
+class _KV extends StatelessWidget {
+  final String label;
+  final String value;
+  const _KV({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+        fontFamily: 'monospace', fontSize: 12.5, color: Colors.black);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        children: [
+          Expanded(flex: 5, child: Text(label, style: style)),
+          Expanded(
+              flex: 7,
+              child: Text(value, style: style, textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
+}
+
 class _Row extends StatelessWidget {
   final String name;
   final String qty;
@@ -149,9 +198,9 @@ class _Row extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         children: [
-          Expanded(flex: 6, child: Text(name, style: style)),
+          Expanded(flex: 5, child: Text(name, style: style)),
           Expanded(
-              flex: 2,
+              flex: 4,
               child: Text(qty, style: style, textAlign: TextAlign.center)),
           Expanded(
               flex: 3,
