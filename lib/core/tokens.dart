@@ -43,6 +43,21 @@ class AppGradients {
   // Primary action gradient: violet → lilac (#6C4CFF → #A06BFF).
   static const primary = LinearGradient(colors: [AppColors.violet, AppColors.lilac]);
 
+  // Sidebar background: diagonal deep-indigo → plum-indigo → plum.
+  static const sidebar = LinearGradient(
+    colors: [AppColors.sidebarDeep, AppColors.sidebarMid, AppColors.sidebarPlum],
+    stops: [0.0, 0.55, 1.0],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Brand icon tile: warm coral → amber (#FF6B81 → #FFB020) to pop on violet.
+  static const brandTile = LinearGradient(
+    colors: [AppColors.coral, AppColors.amber],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   // Destructive action gradient (Delete / Restore): soft red → deep red.
   static const danger = LinearGradient(colors: [Color(0xFFE2456A), AppColors.danger]);
 

@@ -27,6 +27,14 @@ class AppColors {
   static const Color lilac = Color(0xFFA06BFF);
   static const Color ink = Color(0xFF1A1731);
   static const Color muted = Color(0xFF7B7898);
+
+  // ---- Sidebar (violet gradient premium look) ----
+  static const Color sidebarDeep = Color(0xFF2A1A5E); // deep indigo (top)
+  static const Color sidebarMid = Color(0xFF3D2483); // plum-indigo (mid)
+  static const Color sidebarPlum = Color(0xFF5A2D8A); // plum (bottom)
+  static const Color navInactive = Color(0xFFC3B8EA); // soft light-violet text
+  static const Color navActiveFill = Color(0x26FFFFFF); // translucent white 0.15
+  static const Color navHoverFill = Color(0x14FFFFFF); // translucent white 0.08
 }
 
 class AppTheme {

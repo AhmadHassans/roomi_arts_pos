@@ -3,12 +3,14 @@ import 'package:get/get.dart';
 import '../../core/auth/auth_service.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../core/tokens.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../backup/backup_view.dart';
 import '../help/help_view.dart';
 import '../reports/reports_view.dart';
 import '../return_screen/return_view.dart';
 import '../sale/sale_view.dart';
+import '../sales_history/sales_history_view.dart';
 import '../sales_list/sales_list_view.dart';
 import '../settings/settings_view.dart';
 import '../staff/staff_view.dart';
@@ -30,6 +32,7 @@ const List<_NavItem> _navItems = [
   _NavItem(Icons.assignment_return, 'Return'),
   _NavItem(Icons.receipt_long, 'Records'),
   _NavItem(Icons.bar_chart, 'Reports', ownerOnly: true),
+  _NavItem(Icons.calendar_month, 'History', ownerOnly: true),
   _NavItem(Icons.backup, 'Backup', ownerOnly: true),
   _NavItem(Icons.group, 'Staff', ownerOnly: true),
   _NavItem(Icons.settings, 'Settings', ownerOnly: true),
@@ -84,10 +87,12 @@ class ShellView extends StatelessWidget {
       case 4:
         return const ReportsView();
       case 5:
-        return const BackupView();
+        return const SalesHistoryView();
       case 6:
-        return const StaffView();
+        return const BackupView();
       case 7:
+        return const StaffView();
+      case 8:
         return const SettingsView();
       default:
         return const SaleView();
@@ -184,30 +189,60 @@ class _Sidebar extends StatelessWidget {
     final c = Get.find<ShellController>();
     return Container(
       width: Sizes.sidebarWidth,
-      color: AppColors.teal,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      decoration: const BoxDecoration(gradient: AppGradients.sidebar),
+      child: Stack(
         children: [
-          // Shop name at the top of the sidebar.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-            child: Row(
-              children: [
-                const Icon(Icons.storefront, color: Colors.white, size: 30),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    AppText.shopName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: Sizes.titleText,
-                      fontWeight: FontWeight.w800,
-                    ),
+          // Faint radial highlight in the top-right corner for depth.
+          Positioned(
+            top: -80,
+            right: -80,
+            child: IgnorePointer(
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [Color(0x33FFFFFF), Color(0x00FFFFFF)],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Shop name at the top of the sidebar.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+                child: Row(
+                  children: [
+                    // Warm coral→amber tile so the brand icon pops on violet.
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        gradient: AppGradients.brandTile,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        boxShadow: AppShadows.glow(AppColors.coral),
+                      ),
+                      child: const Icon(Icons.storefront,
+                          color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        AppText.shopName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: Sizes.titleText,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           // Only the items this role may use. Owner sees everything. Scrolls
           // if the list is taller than the window (keeps Help pinned below).
           Expanded(
@@ -249,13 +284,15 @@ class _Sidebar extends StatelessWidget {
               label: const Text('Help', style: TextStyle(fontSize: Sizes.bodyText)),
             ),
           ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _SidebarButton extends StatelessWidget {
+class _SidebarButton extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool selected;
@@ -269,38 +306,79 @@ class _SidebarButton extends StatelessWidget {
   });
 
   @override
+  State<_SidebarButton> createState() => _SidebarButtonState();
+}
+
+class _SidebarButtonState extends State<_SidebarButton> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
+    final selected = widget.selected;
+    // Active: translucent white highlight + white text. Hover on an inactive
+    // item: a fainter white wash + white text. Otherwise soft light-violet.
+    final Color fill = selected
+        ? AppColors.navActiveFill
+        : (_hover ? AppColors.navHoverFill : Colors.transparent);
+    final Color fg =
+        (selected || _hover) ? Colors.white : AppColors.navInactive;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       child: Material(
-        color: selected ? Colors.white : Colors.transparent,
+        color: fill,
         borderRadius: BorderRadius.circular(Sizes.radius),
         child: InkWell(
           borderRadius: BorderRadius.circular(Sizes.radius),
-          onTap: onTap,
-          child: Container(
-            height: Sizes.buttonHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Icon(icon,
-                    size: 26,
-                    color: selected ? AppColors.teal : Colors.white),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: Sizes.bodyText,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? AppColors.teal : Colors.white,
+          hoverColor: Colors.transparent,
+          onTap: widget.onTap,
+          onHover: (h) => setState(() => _hover = h),
+          child: Stack(
+            children: [
+              // Amber accent bar on the left edge of the active item.
+              if (selected)
+                Positioned(
+                  left: 0,
+                  top: 8,
+                  bottom: 8,
+                  child: Container(
+                    width: 3,
+                    decoration: BoxDecoration(
+                      color: AppColors.amber,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
-              ],
-            ),
+              Container(
+                height: Sizes.buttonHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      size: 26,
+                      // Icon slightly dimmer than the label when inactive.
+                      color: (selected || _hover)
+                          ? Colors.white
+                          : AppColors.navInactive.withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: Sizes.bodyText,
+                          fontWeight: FontWeight.w700,
+                          color: fg,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
