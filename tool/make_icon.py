@@ -51,8 +51,23 @@ bag_cy = (bag[1] + bag[3]) // 2 + 8
 l, t2, r, b = d.textbbox((0, 0), "R", font=font)
 d.text((bag_cx - (l + r) / 2, bag_cy - (t2 + b) / 2), "R", font=font, fill=VIOLET)
 
-out = "assets/icon/roomi_icon.png"
 import os
 os.makedirs("assets/icon", exist_ok=True)
+out = "assets/icon/roomi_icon.png"
 icon.save(out)
 print("wrote", out, icon.size)
+
+# ---- iOS variant: full-bleed, opaque (iOS forbids alpha and applies its own
+# rounding, so the gradient must reach every edge with no transparent corners).
+ios = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+full_grad = (np.array(NAVY) * (1 - (np.mgrid[0:S, 0:S][1] + np.mgrid[0:S, 0:S][0])[..., None] / (2.0 * (S - 1)))
+             + np.array(VIOLET) * (np.mgrid[0:S, 0:S][1] + np.mgrid[0:S, 0:S][0])[..., None] / (2.0 * (S - 1))).astype(np.uint8)
+ios = Image.fromarray(np.dstack([full_grad, np.full((S, S), 255, np.uint8)]).astype(np.uint8), "RGBA")
+di = ImageDraw.Draw(ios)
+di.arc([cx - 118, 300, cx + 118, 545], start=180, end=360, fill=AMBER, width=handle_w)
+di.rounded_rectangle(bag, radius=54, fill=WHITE)
+di.text((bag_cx - (l + r) / 2, bag_cy - (t2 + b) / 2), "R", font=font, fill=VIOLET)
+ios = ios.convert("RGB")  # drop alpha entirely for iOS
+ios_out = "assets/icon/roomi_icon_ios.png"
+ios.save(ios_out)
+print("wrote", ios_out, ios.size)

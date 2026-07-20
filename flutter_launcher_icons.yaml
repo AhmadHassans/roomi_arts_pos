@@ -3,6 +3,11 @@
 # (kept out of pubspec.yaml so the pubspec JSON schema stays clean.)
 flutter_icons:
   image_path: "assets/icon/roomi_icon.png"
+  # iOS uses a full-bleed, opaque master (iOS forbids alpha + rounds corners
+  # itself, so a padded/transparent icon would look wrong).
+  ios: true
+  image_path_ios: "assets/icon/roomi_icon_ios.png"
+  remove_alpha_ios: true
   macos:
     generate: true
     image_path: "assets/icon/roomi_icon.png"
