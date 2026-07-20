@@ -67,7 +67,37 @@ di = ImageDraw.Draw(ios)
 di.arc([cx - 118, 300, cx + 118, 545], start=180, end=360, fill=AMBER, width=handle_w)
 di.rounded_rectangle(bag, radius=54, fill=WHITE)
 di.text((bag_cx - (l + r) / 2, bag_cy - (t2 + b) / 2), "R", font=font, fill=VIOLET)
-ios = ios.convert("RGB")  # drop alpha entirely for iOS
+ios_rgb = ios.convert("RGB")  # drop alpha entirely for iOS
 ios_out = "assets/icon/roomi_icon_ios.png"
-ios.save(ios_out)
-print("wrote", ios_out, ios.size)
+ios_rgb.save(ios_out)
+print("wrote", ios_out, ios_rgb.size)
+
+# ---- Android adaptive icon: separate background (gradient) + foreground
+# (bag+R). Android masks the icon (circle/squircle) and only the centre ~66%
+# of the foreground is guaranteed visible, so the mark is drawn smaller and
+# centred with transparent margins around it. ----
+bg = Image.fromarray(
+    np.dstack([full_grad, np.full((S, S), 255, np.uint8)]).astype(np.uint8),
+    "RGBA").convert("RGB")
+bg_out = "assets/icon/roomi_adaptive_bg.png"
+bg.save(bg_out)
+print("wrote", bg_out, bg.size)
+
+# Foreground: bag+handle+R on transparent, scaled to ~58% and centred so the
+# adaptive mask never clips it.
+fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+fgd = ImageDraw.Draw(fg)
+fgd.arc([cx - 118, 300, cx + 118, 545], start=180, end=360, fill=AMBER, width=handle_w)
+fgd.rounded_rectangle(bag, radius=54, fill=WHITE)
+fgd.text((bag_cx - (l + r) / 2, bag_cy - (t2 + b) / 2), "R", font=font, fill=VIOLET)
+# Crop to the mark, then paste scaled into the safe zone of a fresh canvas.
+mark = fg.crop(fg.getbbox())
+scale = int(S * 0.56)
+mw, mh = mark.size
+ratio = min(scale / mw, scale / mh)
+mark = mark.resize((int(mw * ratio), int(mh * ratio)), Image.LANCZOS)
+fg2 = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+fg2.paste(mark, ((S - mark.width) // 2, (S - mark.height) // 2), mark)
+fg_out = "assets/icon/roomi_adaptive_fg.png"
+fg2.save(fg_out)
+print("wrote", fg_out, fg2.size)
