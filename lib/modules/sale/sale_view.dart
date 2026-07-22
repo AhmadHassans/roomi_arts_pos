@@ -275,7 +275,6 @@ class _CartPanel extends StatelessWidget {
             const SizedBox(height: 8),
             _PaymentToggle(c: c),
             const SizedBox(height: 8),
-            _CashReceived(c: c),
             _Totals(c: c),
             const SizedBox(height: 8),
             _ActionButtons(c: c),
@@ -427,65 +426,6 @@ class _PaymentToggle extends StatelessWidget {
   }
 }
 
-/// Cash-received input (cash sales only). Shows the change to return live, so
-/// the cashier can read it out — and it prints on the receipt.
-class _CashReceived extends StatelessWidget {
-  final SaleController c;
-  const _CashReceived({required this.c});
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      if (!c.paymentCash.value) return const SizedBox.shrink();
-      // Touch totals so the change line updates as the cart/discount change.
-      c.cart.length;
-      c.discountValue.value;
-      final change = c.changeDue;
-      final showChange = change != null && c.cashReceived.value! > 0;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          children: [
-            const Text('Cash received',
-                style: TextStyle(
-                    fontSize: Sizes.bodyText, fontWeight: FontWeight.w600)),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 130,
-              child: TextField(
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixText: 'Rs ',
-                  hintText: '0',
-                ),
-                onChanged: (v) {
-                  final n = double.tryParse(v.trim());
-                  c.cashReceived.value = (n == null || n == 0) ? null : n;
-                },
-              ),
-            ),
-            const SizedBox(width: 14),
-            if (showChange)
-              Text(
-                change >= 0
-                    ? 'Change: Rs ${change.toStringAsFixed(0)}'
-                    : 'Short: Rs ${(-change).toStringAsFixed(0)}',
-                style: TextStyle(
-                    fontSize: Sizes.bodyText,
-                    fontWeight: FontWeight.w800,
-                    color: change >= 0 ? AppColors.violet : AppColors.danger),
-              ),
-          ],
-        ),
-      );
-    });
-  }
-}
-
 class _Totals extends StatelessWidget {
   final SaleController c;
   const _Totals({required this.c});
@@ -614,13 +554,26 @@ class _ActionButtons extends StatelessWidget {
       return;
     }
 
-    final ok = await askYesNo(
-      title: 'Complete this sale?',
-      message: 'Total is ${c.total.toStringAsFixed(0)}. '
-          'This will save the sale and print a receipt.',
-      yesText: 'Yes, complete',
-    );
-    if (!ok) return;
+    // Cash sale: ask how much the customer handed over and show the change to
+    // return. Card sale: a simple confirm. Either can be cancelled.
+    double? cashGiven;
+    if (c.paymentCash.value) {
+      final res = await Get.dialog<({double? cash})>(
+        _CashPaymentDialog(total: c.total),
+        barrierDismissible: false,
+      );
+      if (res == null) return; // cancelled
+      cashGiven = res.cash;
+    } else {
+      final ok = await askYesNo(
+        title: 'Complete this sale?',
+        message: 'Total is Rs ${c.total.toStringAsFixed(0)} (Card). '
+            'This will save the sale and print a receipt.',
+        yesText: 'Yes, complete',
+      );
+      if (!ok) return;
+    }
+    c.cashReceived.value = cashGiven;
 
     // The sale is saved in one transaction; if stock ran out meanwhile, it
     // rolls back and nothing is saved — tell the cashier and stop.
@@ -640,7 +593,7 @@ class _ActionButtons extends StatelessWidget {
       items: saved.items,
       names: saved.names,
       cashierName: AuthService.to.current.value?.username,
-      cashReceived: c.cashReceived.value,
+      cashReceived: cashGiven,
     );
 
     // Big clear "Sale complete" message, then back to a fresh empty sale.
@@ -735,6 +688,191 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Cash checkout dialog: the cashier types how much cash the customer handed
+/// over, and the change to return is shown live. Returns `(cash: amount)` on
+/// confirm (amount may be null if left blank) or null if cancelled.
+class _CashPaymentDialog extends StatefulWidget {
+  final double total;
+  const _CashPaymentDialog({required this.total});
+
+  @override
+  State<_CashPaymentDialog> createState() => _CashPaymentDialogState();
+}
+
+class _CashPaymentDialogState extends State<_CashPaymentDialog> {
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // Focus the field so the cashier can type the amount straight away.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  double? get _cash {
+    final n = double.tryParse(_ctrl.text.trim());
+    return (n == null || n <= 0) ? null : n;
+  }
+
+  void _confirm() => Get.back<({double? cash})>(result: (cash: _cash));
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.total;
+    final cash = _cash;
+    final change = cash == null ? null : cash - total;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Sizes.radius)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.payments, color: AppColors.violet, size: 28),
+                  SizedBox(width: 10),
+                  Text('Cash payment',
+                      style: TextStyle(
+                          fontSize: Sizes.titleText,
+                          fontWeight: FontWeight.w800)),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.violetTint,
+                  borderRadius: BorderRadius.circular(Sizes.radius),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total bill',
+                        style: TextStyle(
+                            fontSize: Sizes.bodyText,
+                            fontWeight: FontWeight.w600)),
+                    Text('Rs ${total.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                            fontSize: Sizes.titleText,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.violetDark)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _ctrl,
+                focusNode: _focus,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _confirm(),
+                decoration: const InputDecoration(
+                  labelText: 'Cash received from customer',
+                  prefixText: 'Rs ',
+                  hintText: '0',
+                ),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      setState(() => _ctrl.text = total.toStringAsFixed(0)),
+                  icon: const Icon(Icons.done_all, size: 18),
+                  label: Text('Exact (Rs ${total.toStringAsFixed(0)})'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _changeLine(change),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: Sizes.buttonHeight,
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            Get.back<({double? cash})>(result: null),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GradientButton(
+                      expand: true,
+                      icon: Icons.check_circle,
+                      label: 'Complete & print',
+                      onTap: _confirm,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _changeLine(double? change) {
+    String label;
+    Color color;
+    IconData icon;
+    if (change == null) {
+      label = 'Enter cash to see the change';
+      color = AppColors.muted;
+      icon = Icons.info_outline;
+    } else if (change >= 0) {
+      label = 'Return to customer:  Rs ${change.toStringAsFixed(0)}';
+      color = const Color(0xFF1EAE74);
+      icon = Icons.account_balance_wallet;
+    } else {
+      label = 'Balance still due:  Rs ${(-change).toStringAsFixed(0)}';
+      color = AppColors.danger;
+      icon = Icons.error_outline;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(Sizes.radius),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: change == null ? Sizes.bodyText : 19,
+                    fontWeight: FontWeight.w800,
+                    color: color)),
+          ),
+        ],
       ),
     );
   }
