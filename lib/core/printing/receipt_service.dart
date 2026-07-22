@@ -344,8 +344,14 @@ class ReceiptService {
     if (data.showsCash) {
       out.addAll(g.hr());
       totalRow('Cash received', ReceiptData.money(data.cashReceived!));
-      totalRow('CHANGE RETURN', 'Rs ${ReceiptData.money(data.changeDue ?? 0)}',
-          big: true);
+      if (data.balanceDue != null) {
+        totalRow('BALANCE DUE', 'Rs ${ReceiptData.money(data.balanceDue!)}',
+            big: true);
+      } else {
+        totalRow('CHANGE RETURN',
+            'Rs ${ReceiptData.money(data.changeReturn ?? 0)}',
+            big: true);
+      }
     }
 
     out.addAll(g.hr());

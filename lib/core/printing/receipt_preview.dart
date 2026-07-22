@@ -104,12 +104,21 @@ class ReceiptPreview extends StatelessWidget {
                         qty: '',
                         total: ReceiptData.money(data.cashReceived!),
                       ),
-                      _Row(
-                        name: 'CHANGE RETURN',
-                        qty: '',
-                        total: 'Rs ${ReceiptData.money(data.changeDue ?? 0)}',
-                        bold: true,
-                      ),
+                      if (data.balanceDue != null)
+                        _Row(
+                          name: 'BALANCE DUE',
+                          qty: '',
+                          total: 'Rs ${ReceiptData.money(data.balanceDue!)}',
+                          bold: true,
+                        )
+                      else
+                        _Row(
+                          name: 'CHANGE RETURN',
+                          qty: '',
+                          total:
+                              'Rs ${ReceiptData.money(data.changeReturn ?? 0)}',
+                          bold: true,
+                        ),
                     ],
                     const _Dashes(),
                     Text('Items: ${data.itemsCount}',

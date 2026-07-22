@@ -58,12 +58,22 @@ class ReceiptData {
   /// Total pieces across all lines ("Items: N").
   int get itemsCount => items.fold(0, (sum, it) => sum + it.qty);
 
-  /// Change to return, when cash received is known.
+  /// Change to return, when cash received is known (can be negative if the
+  /// customer underpaid).
   double? get changeDue =>
       cashReceived == null ? null : (cashReceived! - total);
 
-  /// Whether the Cash received / Change block should print.
+  /// Whether the Cash received block should print.
   bool get showsCash => cashReceived != null && !isReturn;
+
+  /// Change to give back (>= 0), or null when the customer underpaid.
+  double? get changeReturn =>
+      changeDue != null && changeDue! >= 0 ? changeDue : null;
+
+  /// Amount still owed (> 0) when the customer underpaid, else null. Avoids
+  /// printing a confusing negative "CHANGE RETURN".
+  double? get balanceDue =>
+      changeDue != null && changeDue! < 0 ? -changeDue! : null;
 
   factory ReceiptData.from({
     required Sale sale,
