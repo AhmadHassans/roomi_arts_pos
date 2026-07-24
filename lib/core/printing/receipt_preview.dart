@@ -38,7 +38,10 @@ class ReceiptPreview extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       fontSize: 13)),
             ),
-            Container(
+            // Scrollable so a tall receipt never overflows the dialog.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Container(
               color: Colors.white,
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
               child: DefaultTextStyle(
@@ -128,6 +131,8 @@ class ReceiptPreview extends StatelessWidget {
                         style: const TextStyle(
                             fontFamily: 'monospace', fontWeight: FontWeight.w700)),
                   ],
+                ),
+              ),
                 ),
               ),
             ),
